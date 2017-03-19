@@ -5,6 +5,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -25,17 +26,27 @@ import de.stephanus.netatmo.model.Response;
 
 public class NetAtmoIntegrator {
 
+	private static final String URL_READ_DATA = "https://api.netatmo.com/api/getstationsdata?access_token=";
+	private static final String URL_OAUTH_TOKEN_ENDPOINT = "https://api.netatmo.net/oauth2/token";
+	
+	private static final String DEFAULT_ENCODING = "UTF-8";
+	
 	private static NetAtmoIntegrator instance;
+
+	private final Properties configuration;
 	
 	private CloseableHttpClient httpClient = null;
 	private Authentication authentication;
 	
-	private NetAtmoIntegrator(){
+	private NetAtmoIntegrator(Properties configuration){
 		httpClient = HttpClientBuilder.create().build();
+		
+		this.configuration = configuration; 
 	}
 	
+	
 	public static void main(String[] args) {
-		NetAtmoIntegrator integrator = new NetAtmoIntegrator();
+		NetAtmoIntegrator integrator = new NetAtmoIntegrator(new Properties());
 		List<Device> devices = integrator.getDevices();
 		
 		for (Device device : devices) {
@@ -46,8 +57,13 @@ public class NetAtmoIntegrator {
 
 	public static NetAtmoIntegrator getInstance()  {
 		if(instance == null) {
-			instance = new NetAtmoIntegrator();
+			throw new RuntimeException("No instance created yet!");
 		}
+		return instance;
+	}
+	
+	public static NetAtmoIntegrator newInstance(Properties configuration)  {
+		instance = new NetAtmoIntegrator(configuration);
 		return instance;
 	}
 	
@@ -61,7 +77,7 @@ public class NetAtmoIntegrator {
 		
 		HttpPost deviceRequest = null;
 		try {
-			deviceRequest = new HttpPost("https://api.netatmo.com/api/getstationsdata?access_token=" + URLEncoder.encode(accessToken, "UTF-8"));
+			deviceRequest = new HttpPost(URL_READ_DATA + URLEncoder.encode(accessToken, DEFAULT_ENCODING));
 		} catch (UnsupportedEncodingException e1) {
 			e1.printStackTrace();
 			return result;
@@ -73,7 +89,7 @@ public class NetAtmoIntegrator {
 			HttpEntity entity = response.getEntity();
 
 			if(response.getStatusLine().getStatusCode() == 200) {
-				String content = EntityUtils.toString(entity, "UTF-8");
+				String content = EntityUtils.toString(entity, DEFAULT_ENCODING);
 				
 				Gson gson = new Gson();
 				Response resp = gson.fromJson(content, Response.class);
@@ -102,17 +118,17 @@ public class NetAtmoIntegrator {
 	}
 	
 	private void authenticate() {
-        HttpPost authorizeRequest = new HttpPost("https://api.netatmo.net/oauth2/token");
+        HttpPost authorizeRequest = new HttpPost(URL_OAUTH_TOKEN_ENDPOINT);
         
         HttpResponse response;
 		try {
 	        List <NameValuePair> credentials = new ArrayList <NameValuePair>();
-	        credentials.add(new BasicNameValuePair("grant_type", "password"));
-	        credentials.add(new BasicNameValuePair("client_id", ""));
-	        credentials.add(new BasicNameValuePair("client_secret", ""));
-	        credentials.add(new BasicNameValuePair("username", ""));
-	        credentials.add(new BasicNameValuePair("password", ""));
-	        credentials.add(new BasicNameValuePair("scope", "read_station"));
+	        credentials.add(new BasicNameValuePair("grant_type", configuration.getProperty(Configuration.AUTH_GRANT_TYPE)));
+	        credentials.add(new BasicNameValuePair("client_id", configuration.getProperty(Configuration.AUTH_CLIENT_ID)));
+	        credentials.add(new BasicNameValuePair("client_secret", configuration.getProperty(Configuration.AUTH_CLIENT_SECRET)));
+	        credentials.add(new BasicNameValuePair("username", configuration.getProperty(Configuration.AUTH_USER_ID)));
+	        credentials.add(new BasicNameValuePair("password", configuration.getProperty(Configuration.AUTH_USER_PASSWORD)));
+	        credentials.add(new BasicNameValuePair("scope", configuration.getProperty(Configuration.AUTH_SCOPE)));
 	        
 	        HttpEntity authorizationBody = new UrlEncodedFormEntity(credentials);
 	        authorizeRequest.setEntity(authorizationBody);
@@ -121,7 +137,7 @@ public class NetAtmoIntegrator {
 			HttpEntity entity = response.getEntity();
 			
 			if(response.getStatusLine().getStatusCode() == 200) {
-				String content = EntityUtils.toString(entity, "UTF-8");
+				String content = EntityUtils.toString(entity, DEFAULT_ENCODING);
 				authentication = new Gson().fromJson(content, Authentication.class);
 				authentication.updateExpiryDate();
 			}
@@ -138,15 +154,15 @@ public class NetAtmoIntegrator {
         	return;
         }
 		
-		HttpPost authorizeRequest = new HttpPost("https://api.netatmo.net/oauth2/token");
+		HttpPost authorizeRequest = new HttpPost(URL_OAUTH_TOKEN_ENDPOINT);
         
         HttpResponse response;
 		try {
 	        List <NameValuePair> credentials = new ArrayList <NameValuePair>();
 	        credentials.add(new BasicNameValuePair("grant_type", "refresh_token"));
 	        credentials.add(new BasicNameValuePair("refresh_token", authentication.getRefresh_token()));
-	        credentials.add(new BasicNameValuePair("client_id", ""));
-	        credentials.add(new BasicNameValuePair("client_secret", ""));
+	        credentials.add(new BasicNameValuePair("client_id", configuration.getProperty(Configuration.AUTH_CLIENT_ID)));
+	        credentials.add(new BasicNameValuePair("client_secret", configuration.getProperty(Configuration.AUTH_CLIENT_SECRET)));
 	        
 	        HttpEntity authorizationBody = new UrlEncodedFormEntity(credentials);
 	        authorizeRequest.setEntity(authorizationBody);
@@ -155,7 +171,7 @@ public class NetAtmoIntegrator {
 			HttpEntity entity = response.getEntity();
 			
 			if(response.getStatusLine().getStatusCode() == 200) {
-				String content = EntityUtils.toString(entity, "UTF-8");
+				String content = EntityUtils.toString(entity, DEFAULT_ENCODING);
 				authentication = new Gson().fromJson(content, Authentication.class);
 				authentication.updateExpiryDate();
 			}
